@@ -21,6 +21,7 @@ app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+
 # define enums
 class PayStatus(Enum):
     UNPAID = 'ready' # 미결제
@@ -28,10 +29,12 @@ class PayStatus(Enum):
     FAILED = 'failed' # 결제실패
     CANCEL = 'cancelled' # 환불취소
 
+
 # define form validation classes
 class PayResult(BaseModel):
     imp_uid: str
     merchant_uid: str
+
 
 class PayCancel(BaseModel):
     imp_uid: str
@@ -49,6 +52,8 @@ class PayCancel(BaseModel):
 
 
 async def get_imp_token():
+    token = None
+
     headers = {
         'Content-Type': 'application/x-www-form-urlencoded'
         , 'Accept': 'application/json'
@@ -64,15 +69,18 @@ async def get_imp_token():
         print(res.url)
         print(res.json())
 
+    # get access token when success
+    if res.status_code == 200 and res.json()['code'] == 0:
+            token = res.json()['response']['access_token']
     # raise 401 error when auth fails    
-    if res.status_code == 401:
+    else:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
+            detail=res.json()['message'],
         )
 
-    token = res.json()['response']['access_token']
     return token
+
 
 async def is_paid_record(imp_uid: str):
     is_paid = False
@@ -89,17 +97,21 @@ async def is_paid_record(imp_uid: str):
         print(res.url)
         print(res.json())
 
-    status = res.json()['response']['status']
-    if(status == PayStatus.PAID.value):
-        ispaid = True
+    # check status when valid record exsists
+    if res.status_code == 200 and res.json()['code'] == 0:
+        status = res.json()['response']['status']
+        if(status == PayStatus.PAID.value):
+            ispaid = True
 
     return is_paid
+
 
 @app.get("/", response_class=HTMLResponse)
 def read_root(request: Request):
     return templates.TemplateResponse(
         request=request, name="index.html", context={}
     )
+
 
 @app.post("/payrecord")
 async def pay_record(result: PayResult):
@@ -118,6 +130,7 @@ async def pay_record(result: PayResult):
         print(res.json())
 
     return res.json()
+
 
 @app.post("/paycancel")
 async def pay_cancel(req_cancel: PayCancel):
